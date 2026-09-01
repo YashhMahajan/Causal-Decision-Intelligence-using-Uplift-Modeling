@@ -1,0 +1,13 @@
+feature,category,action,reason
+(row index),identifier (surrogate),client_uid — exclude from X,No id column in the source file.
+group,TREATMENT,map -> treatment_arm / T,"'test' = treated (communication), 'control'. 75/25 split."
+response_att,OUTCOME — post-treatment (primary),target only — EXCLUDE from X,Attributed binary response. The uplift label.
+response_sms / response_viber,post-treatment (channel delivery),EXCLUDE from X and from outcomes,Fractional per-channel values recorded during the campaign; ill-defined for control.
+age,pre-treatment covariate (numeric),"clip [14,99] -> NaN + flag + impute (train)",~335 out-of-range (min 0) + ~11.8k already-missing. Rows kept.
+age_invalid,derived covariate (binary),keep (engineered),"1 where raw age is out of [14,99] or missing (~12.1k rows)."
+gender,pre-treatment covariate (categorical),"map Ж/М/Не определен/NaN -> F/M/unknown, one-hot",'unknown' kept as its own level (~1.4%).
+children,pre-treatment covariate (numeric count),keep + impute (train) + missing-indicator,0-9; ~8.6k missing.
+months_from_register,pre-treatment covariate (numeric),keep + impute (train) + missing-indicator,Loyalty tenure in months; ~8.6k missing.
+main_format,pre-treatment covariate (binary),keep,Primary store-format indicator (0/1).
+cheque_count_* / sale_sum_* / sale_count_* / disc_sum_*,"pre-treatment covariate (numeric, historical windows)",keep + impute (train) + missing-indicator,Basket / spend / discount aggregates over 3m/6m/12m. Historical => valid X.
+k_var_* / stdev_* / *_share_* / crazy_purchases_*,"pre-treatment covariate (numeric, historical)",keep + impute (train) + missing-indicator,Dispersion / share / anomaly aggregates over 15d..12m. NaN = insufficient activity (structural) -> indicator preserves that signal.

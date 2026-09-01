@@ -1,0 +1,129 @@
+{
+  "dataset": "hillstrom",
+  "n_rows": 64000,
+  "n_cols": 20,
+  "dtypes": {
+    "customer_uid": "int64",
+    "recency": "int16",
+    "history_segment": "str",
+    "history": "float64",
+    "mens": "int8",
+    "womens": "int8",
+    "zip_code": "category",
+    "newbie": "int8",
+    "channel": "category",
+    "segment": "str",
+    "visit": "int8",
+    "conversion": "int8",
+    "spend": "float64",
+    "treatment_arm": "category",
+    "T": "int8",
+    "T_mens": "int8",
+    "T_womens": "int8",
+    "history_segment_ord": "int8",
+    "history_log1p": "float64",
+    "bought_both": "int8"
+  },
+  "missing": {},
+  "missing_total": 0,
+  "duplicates": {
+    "unit_id_duplicated": 0,
+    "full_row_duplicated_extra": 0
+  },
+  "invalid_value_checks": {
+    "recency": 0,
+    "history": 0,
+    "spend": 0
+  },
+  "treatment": {
+    "primary_binary": "T",
+    "arm_col": "treatment_arm",
+    "arm_counts": {
+      "womens_email": 21387,
+      "mens_email": 21307,
+      "control": 21306
+    },
+    "arm_shares": {
+      "womens_email": 0.3342,
+      "mens_email": 0.3329,
+      "control": 0.3329
+    },
+    "p_treated": 0.66709375
+  },
+  "outcomes_by_arm": {
+    "control": {
+      "visit": 0.10616727682343002,
+      "conversion": 0.005726086548390125,
+      "spend": 0.6527893551112363
+    },
+    "mens_email": {
+      "visit": 0.18275684047496127,
+      "conversion": 0.01253109306800582,
+      "spend": 1.4226165110057727
+    },
+    "womens_email": {
+      "visit": 0.151400383410483,
+      "conversion": 0.008837144059475383,
+      "spend": 1.0772015710478329
+    }
+  },
+  "naive_unadjusted_ATE": {
+    "mens_email_vs_control": {
+      "visit": 0.07658956365153125,
+      "conversion": 0.006805006519615695,
+      "spend": 0.7698271558945364
+    },
+    "womens_email_vs_control": {
+      "visit": 0.045233106587052985,
+      "conversion": 0.003111057511085258,
+      "spend": 0.4244122159365966
+    }
+  },
+  "class_balance": {
+    "visit": 0.14678125,
+    "conversion": 0.00903125
+  },
+  "randomization_check": {
+    "standardized_mean_diffs": {
+      "recency": 0.006,
+      "history": 0.0071,
+      "history_log1p": 0.0027,
+      "mens": -0.0066,
+      "womens": 0.0063,
+      "newbie": 0.0008,
+      "bought_both": -0.0006,
+      "zip_code_Rural": 0.0088,
+      "zip_code_Suburban": -0.0064,
+      "zip_code_Urban": 0.0001,
+      "channel_Multichannel": -0.0047,
+      "channel_Phone": 0.0002,
+      "channel_Web": 0.0029
+    },
+    "max_abs_smd": 0.0088,
+    "n_smd_above_flag": 0,
+    "propensity_auc_5fold": 0.4962459669302163,
+    "propensity_min": 0.6483428703736662,
+    "propensity_max": 0.7319228618888888,
+    "propensity_mass_outside_trim": 0.0,
+    "propensity_diag_n": 64000
+  },
+  "dataset_specific": {
+    "coincidental_duplicates": {
+      "rows_in_duplicate_groups": 7634,
+      "conversions_among_them": 0,
+      "by_arm": {
+        "womens_email": 2575,
+        "control": 2555,
+        "mens_email": 2504
+      },
+      "x_vectors_spanning_multiple_arms": 380,
+      "decision": "kept \u2014 coincidental, not data-entry errors"
+    },
+    "history_segment_is_deterministic_bin_of_history": true,
+    "outcome_nesting": {
+      "conversion1_and_spend0": 0,
+      "spend_pos_and_conversion0": 0,
+      "conversion1_and_visit0": 0
+    }
+  }
+}

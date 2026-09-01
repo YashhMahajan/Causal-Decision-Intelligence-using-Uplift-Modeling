@@ -1,0 +1,133 @@
+{
+  "integrity": {
+    "row_count_conserved": true,
+    "no_unit_overlap": true,
+    "unit_id_unique": true,
+    "X_missing_cells": 0,
+    "X_non_finite_cells": 0,
+    "X_all_numeric": true,
+    "leakage_outcome_or_excluded_in_X": [],
+    "train_fraction": 0.8,
+    "onehot_zip_code_rowsum_ok": true,
+    "onehot_channel_rowsum_ok": true
+  },
+  "treatment_outcome": {
+    "train": {
+      "arm_counts": {
+        "womens_email": 17109,
+        "mens_email": 17046,
+        "control": 17045
+      },
+      "outcome_rates_by_arm": {
+        "control": {
+          "visit": 0.107304,
+          "conversion": 0.005749,
+          "spend": 0.688695
+        },
+        "mens_email": {
+          "visit": 0.183093,
+          "conversion": 0.012554,
+          "spend": 1.467174
+        },
+        "womens_email": {
+          "visit": 0.152493,
+          "conversion": 0.008826,
+          "spend": 1.119524
+        }
+      },
+      "naive_ATE_vs_control": {
+        "mens_email": {
+          "visit": 0.07578861291829295,
+          "conversion": 0.006804778277211488,
+          "spend": 0.7784783119078647
+        },
+        "womens_email": {
+          "visit": 0.04518864524719002,
+          "conversion": 0.0030762775646858065,
+          "spend": 0.4308284239881637
+        }
+      }
+    },
+    "test": {
+      "arm_counts": {
+        "womens_email": 4278,
+        "control": 4261,
+        "mens_email": 4261
+      },
+      "outcome_rates_by_arm": {
+        "control": {
+          "visit": 0.101619,
+          "conversion": 0.005632,
+          "spend": 0.509157
+        },
+        "mens_email": {
+          "visit": 0.181413,
+          "conversion": 0.012438,
+          "spend": 1.244368
+        },
+        "womens_email": {
+          "visit": 0.147031,
+          "conversion": 0.008883,
+          "spend": 0.907943
+        }
+      },
+      "naive_ATE_vs_control": {
+        "mens_email": {
+          "visit": 0.07979347570992724,
+          "conversion": 0.006805914104670265,
+          "spend": 0.7352100445904717
+        },
+        "womens_email": {
+          "visit": 0.045411984864628344,
+          "conversion": 0.003250174808122508,
+          "spend": 0.39878548923068957
+        }
+      }
+    }
+  },
+  "balance_overlap": {
+    "smd": {
+      "recency": 0.011,
+      "history": 0.0088,
+      "history_log1p": 0.0065,
+      "mens": -0.0072,
+      "womens": 0.0076,
+      "newbie": -0.0002,
+      "bought_both": 0.0006,
+      "zip_code_Rural": 0.0086,
+      "zip_code_Suburban": -0.003,
+      "zip_code_Urban": -0.0032,
+      "channel_Multichannel": -0.0036,
+      "channel_Phone": -0.0046,
+      "channel_Web": 0.0069
+    },
+    "max_abs_smd": 0.011,
+    "n_smd_above_flag": 0,
+    "smd_flag_threshold": 0.1,
+    "propensity_diag_n": 51200,
+    "propensity_logreg": {
+      "auc": 0.49738809739166856,
+      "min": 0.6482853823690807,
+      "p01": 0.6541880302584201,
+      "mean": 0.6670911265037768,
+      "p99": 0.6826369449030635,
+      "max": 0.7292364473142152,
+      "mass_outside_trim": 0.0
+    },
+    "propensity_hgb": {
+      "auc": 0.5000611855285545,
+      "min": 0.5222987288473203,
+      "p01": 0.6277980629246878,
+      "mean": 0.6670423337694242,
+      "p99": 0.7108850872615775,
+      "max": 0.7725292805482541,
+      "mass_outside_trim": 0.0
+    },
+    "positivity_verdict": "Strong overlap consistent with randomization: propensity AUC in the RCT band, support concentrated near P(T=1), no mass in the trim tails. CATE is identified across the covariate space."
+  },
+  "reproducibility": {
+    "test_unit_id_sha256_16": "58c31bcd96b5ace8",
+    "seed": 20240501,
+    "note": "Deterministic given seed; re-run to confirm."
+  }
+}

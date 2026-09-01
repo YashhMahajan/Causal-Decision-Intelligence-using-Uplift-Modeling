@@ -1,0 +1,95 @@
+{
+  "integrity": {
+    "row_count_conserved": true,
+    "no_unit_overlap": true,
+    "unit_id_unique": true,
+    "X_missing_cells": 0,
+    "X_non_finite_cells": 0,
+    "X_all_numeric": true,
+    "leakage_outcome_or_excluded_in_X": [],
+    "train_fraction": 0.8,
+    "onehot_gender_rowsum_ok": true
+  },
+  "treatment_outcome": {
+    "train": {
+      "arm_counts": {
+        "control": 80046,
+        "treated": 79985
+      },
+      "outcome_rates_by_arm": {
+        "control": {
+          "target": 0.603278
+        },
+        "treated": {
+          "target": 0.636507
+        }
+      },
+      "naive_ATE_vs_control": {
+        "treated": {
+          "target": 0.03322872994961701
+        }
+      }
+    },
+    "test": {
+      "arm_counts": {
+        "control": 20012,
+        "treated": 19996
+      },
+      "outcome_rates_by_arm": {
+        "control": {
+          "target": 0.603288
+        },
+        "treated": {
+          "target": 0.636527
+        }
+      },
+      "naive_ATE_vs_control": {
+        "treated": {
+          "target": 0.03323927827740247
+        }
+      }
+    }
+  },
+  "balance_overlap": {
+    "smd": {
+      "age": 0.0035,
+      "tenure_days": 0.0064,
+      "issue_month": 0.0107,
+      "days_since_first_redeem": -0.0011,
+      "age_invalid": 0.001,
+      "has_redeemed_pre": 0.0071,
+      "redeem_info_missing": -0.0071,
+      "gender_F": 0.004,
+      "gender_M": -0.0026,
+      "gender_unknown": -0.0019
+    },
+    "max_abs_smd": 0.0107,
+    "n_smd_above_flag": 0,
+    "smd_flag_threshold": 0.1,
+    "propensity_diag_n": 160031,
+    "propensity_logreg": {
+      "auc": 0.49891698658218697,
+      "min": 0.48517256056660774,
+      "p01": 0.48879884250607036,
+      "mean": 0.4998080094152632,
+      "p99": 0.5080780828441454,
+      "max": 0.5210876364820407,
+      "mass_outside_trim": 0.0
+    },
+    "propensity_hgb": {
+      "auc": 0.5004473074197251,
+      "min": 0.3677441910701019,
+      "p01": 0.46760068849875325,
+      "mean": 0.4998227798933688,
+      "p99": 0.531564516693557,
+      "max": 0.6358048593795146,
+      "mass_outside_trim": 0.0
+    },
+    "positivity_verdict": "Strong overlap consistent with randomization: propensity AUC in the RCT band, support concentrated near P(T=1), no mass in the trim tails. CATE is identified across the covariate space."
+  },
+  "reproducibility": {
+    "test_unit_id_sha256_16": "9573264c1085e3b6",
+    "seed": 20240501,
+    "note": "Deterministic given seed; re-run to confirm."
+  }
+}

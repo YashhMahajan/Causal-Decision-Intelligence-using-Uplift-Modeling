@@ -1,0 +1,15 @@
+feature,category,action,reason
+client_id,identifier (native),"rename -> client_uid, exclude from X",Unit id. Not a feature.
+treatment_flg,TREATMENT,keep as T (+ treatment_arm label),Randomized marketing communication. Single binary arm.
+target,OUTCOME — post-treatment (primary),target only — EXCLUDE from X,Purchase during the promo period. Binary uplift label.
+age,pre-treatment covariate (numeric),"clip [14,99] -> NaN + flag + impute (train)","~885 out-of-range values in the RCT frame (negatives, 1852, ...). Rows kept; invalidity flagged, not dropped."
+age_invalid,derived covariate (binary),keep (engineered),"1 where raw age is out of [14,99] or missing. Missing-data signal."
+gender,pre-treatment covariate (categorical),"map U/NaN -> 'unknown', one-hot",F / M / unknown. 'unknown' is 46% and kept as its own level.
+first_issue_date,pre-treatment timestamp,"derive tenure_days / issue_month, then EXCLUDE",Loyalty-card issue date; all <= REF_DATE. Raw datetime not a model feature.
+tenure_days,derived covariate (numeric),keep (engineered),(REF_DATE - first_issue_date) in days. Pre-treatment loyalty tenure.
+issue_month,derived covariate (numeric 1-12),"keep (engineered, optional)",Enrolment-cohort seasonality.
+first_redeem_date,MIXED timestamp (pre/post-treatment),"CENSOR at REF_DATE, then EXCLUDE",~11.6% of values post-date the campaign -> raw use is temporal leakage.
+has_redeemed_pre,derived covariate (binary),keep (engineered),1 iff a valid redemption occurred on/before REF_DATE.
+days_since_first_redeem,derived covariate (numeric),keep (engineered) + impute (train),Days from first valid pre-REF redemption to REF_DATE. NaN when none.
+redeem_info_missing,derived covariate (binary),keep (engineered),1 when redemption is absent / post-REF / invalid (redeem < issue).
+products.csv (all columns),external dictionary,EXCLUDE entirely,Not joinable to clients without the absent `purchases` table.

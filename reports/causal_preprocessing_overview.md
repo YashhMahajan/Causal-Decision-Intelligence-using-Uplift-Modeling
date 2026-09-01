@@ -1,277 +1,239 @@
-# Causal-Safe Preprocessing — Overview & Decisions
+# Causal-Safe Preprocessing — Master Overview (Phase 1 + Phase 2)
 
 **Project:** Causal Decision Intelligence using Uplift Modeling
-**Scope of this document:** repository inspection, causal problem definition,
-preprocessing decisions, validation results, and remaining limitations for the
-**primary dataset (Hillstrom / MineThatData)**. Secondary datasets present in
-the repo are audited at the end with go/no-go verdicts.
-**Status:** preprocessing only — *no modeling performed*.
+**Deliverable state:** three datasets audited, causally preprocessed, validated,
+documented, and modeling-ready for uplift / heterogeneous-treatment-effect
+estimation. **No uplift models built.**
+
+| Dataset | Domain | Rows | X cols | T | Y (primary) | Naive ATE | max\|SMD\| | Propensity AUC |
+|---|---|---:|---:|---|---|---:|---:|---:|
+| **Hillstrom** | E-mail retail RCT (3-arm) | 64,000 | 13 | `T` = any e-mail (+ `T_mens`,`T_womens`) | `conversion` | +0.0068 / +0.0031 | 0.011 | 0.497 |
+| **X5 RetailHero** | Retail loyalty RCT | 200,039 | 10 | `treatment_flg` | `target` | +0.0332 | 0.011 | 0.499 |
+| **Lenta** | Grocery RCT | 687,029 | 344 | `T` = communication | `response_att` | +0.0075 | 0.028 | 0.497 |
+
+All three: randomization confirmed, positivity holds, no treatment/outcome/
+post-treatment/temporal leakage, preprocessors fit on train only, splits
+reproducible from a fixed seed.
 
 ---
 
-## 0. Repository inspection (what is actually here)
+## Part 1 — Phase-1 (Hillstrom) independent audit & corrections
 
-| Path | Contents | Role |
-|---|---|---|
-| `docs/dataset_guide.md` | Dataset playbook — designates **Hillstrom 64K** as the primary development dataset; Lenta / MegaFon / X5 as generalization; synthetic/IHDP/ACIC for causal truth; Criteo for scale. | Source of truth for dataset strategy |
-| `docs/knowledge_base_1.md` | Platform spec: propensity → S/T/X/DR-learner + Causal Forest → 4 segments → Qini/AUUC → budget optimizer. Explicit guardrails: no post-treatment features, overlap is a gate, evaluation is causal-native. | Source of truth for method + guardrails |
-| `datasets/phase 1 - Main Development/Kevin_Hillstrom_…2008.03.20.csv` | 64,000 × 12. The Hillstrom RCT. | **Primary — this pipeline** |
-| `datasets/phase 1 - Main Development/Digital Marketing Campaign Dataset.xlsx` | 5,000 × 15. Not referenced anywhere in the docs. | Audited §7 — **not RCT-clean; fixture only** |
-| `datasets/phase 1 - Main Development/x5-retail-hero-uplift-raw-data.csv` | 400,162 × 5. Byte-identical to `phase 2/.../clients.csv`. | X5 client table (duplicate copy) |
-| `datasets/phase 2 - generalization/x5-retail-hero-uplift-raw-data/` | `clients.csv` (400,162), `products.csv` (43,039), `uplift_train.csv` (200,039), `uplift_test.csv`, `uplift_sample_submission.csv`. **No `purchases` table.** | Audited §7 — validation dataset, feature-limited |
-| `datasets/phase 2 - generalization/*.ipynb` | Kaggle reference notebooks (MegaFon, Lenta) using `scikit-uplift` meta-learners. Not tied to local files; no preprocessing logic to reuse. | Context only |
+Phase 1 was re-inspected against the data, not the summary. Findings:
 
-No pre-existing preprocessing code exists in the repo.
+### Verified correct (no change)
+- **Treatment**: `segment` → 3 native arms preserved (`control` / `mens_email` /
+  `womens_email`) plus binary `T` (any e-mail) and `T_mens` / `T_womens`. Not
+  collapsed. ✔
+- **Outcomes**: `visit`, `conversion`, `spend` — all post-treatment (2-week
+  window), used as targets only, excluded from X. Nesting `{spend>0} ≡
+  {conversion=1} ⊂ {visit=1}` holds exactly (0 violations). ✔
+- **X**: only the historical 12-month snapshot (`recency`, `history`, `mens`,
+  `womens`, `newbie`, `zip_code`, `channel`). `history_segment` excluded as a
+  deterministic non-overlapping bucketing of `history`. ✔
+- **Leakage**: no post-treatment column in X; no timestamp column so no temporal
+  leakage path; surrogate `customer_uid` never a feature. ✔
+- **Split**: 80/20 stratified on `treatment_arm × conversion`. Stratifying on the
+  rare outcome preserves the (T, Y) cell sizes that Qini/AUUC variance depends on;
+  it uses no feature information and does not leak. ✔
+- **Fit-on-train**: one-hot categories, imputer statistics, optional scaler — all
+  `.fit()` on train, applied to both splits; persisted to `artifacts/hillstrom/`. ✔
+- **Duplicates**: 7,634 rows share a feature vector with another row. Spread
+  evenly across arms, 0 conversions among them, no ID to disprove identity →
+  kept as coincidental collisions (not data-entry errors). ✔
+- **Positivity**: propensity ≈ 2/3 everywhere, AUC ≈ 0.5, 0 mass in the trim
+  tails. ✔
 
----
-
-## 1. Causal problem definition — Hillstrom
-
-| Element | Value | Notes |
-|---|---|---|
-| **Unit of analysis** | Individual customer, one row. | No native ID. We attach `customer_uid` = raw row position — **metadata, never a feature**. |
-| **Treatment `T`** | `segment` ∈ {`No E-Mail`, `Mens E-Mail`, `Womens E-Mail`} | Randomized 3-arm campaign. Kept natively as `treatment_arm` {control, mens_email, womens_email}; binary `T` = any e-mail vs none for standard uplift; `T_mens`, `T_womens` for one-vs-rest / multi-arm. **Arms never collapsed away** (per `docs/dataset_guide.md` §3.3). |
-| **Outcomes `Y`** (post-treatment, 2-week window) | `visit` (0/1), `conversion` (0/1), `spend` (\$, continuous) | `visit` is an **intermediate outcome / mediator** (a visit is itself caused by the e-mail). `conversion` is the primary uplift label. `spend` is the ROI outcome, zero-inflated. Structural nesting confirmed in data: `{spend>0} ≡ {conversion=1} ⊂ {visit=1}` (0 violations). |
-| **Pre-treatment covariates `X`** | `recency`, `history`, `mens`, `womens`, `newbie`, `zip_code`, `channel` (+ engineered `history_log1p`, `mw_count`, `bought_both`) | Historical 12-month customer snapshot — available at send time. |
-| **Derived-redundant (excluded from X)** | `history_segment` | Deterministic 7-way bucketing of `history` — verified non-overlapping bin ranges. Kept as `history_segment_ord` for grouped diagnostics only. |
-| **Identifiers / metadata** | `customer_uid`, `split` | Never in X. |
-| **Post-treatment variables** | `visit`, `conversion`, `spend` | Targets only. Excluded from X — using any of them as a feature is post-treatment / mediator leakage. |
-| **Potential leakage variables** | none beyond the outcomes | `mens`/`womens` are *prior-year purchase* flags (not the campaign, not gender), so they are legitimate pre-treatment covariates. |
-| **Time / date structure** | none | Single cross-section of one campaign. Covariates are a pre-send snapshot; outcomes a fixed forward 2-week window. **Temporal leakage is structurally impossible within-dataset; a temporal split is not applicable.** |
-
-### Data-quality summary (raw audit — `reports/hillstrom_audit.json`)
-
-| Check | Result | Decision |
-|---|---|---|
-| Missing values | **0** across all 64,000 × 12 | No imputation needed. Imputers kept in the pipeline as no-ops for reuse on phase-2 datasets. |
-| Exact-duplicate rows | 7,634 rows in duplicate groups; concentrated at `history = 29.99` (floor value) + low-cardinality combos; spread across arms `{W:2575, C:2555, M:2504}`; **0 conversions / 0 spend** among them | **Kept.** No ID to establish true identity; collisions are expected from coarse features; dropping them would delete ~12 % of the sample, preferentially remove low-value customers, and bias CATE toward high-value — with no offsetting benefit. Flagged as a limitation (§6). |
-| Invalid values | recency all in [1,12]; `history` all ≥ 29.99 (> 0); `spend` all ≥ 0; binaries all {0,1} | Nothing to fix. |
-| Outliers | `history` P99≈1,219, max 3,345; `spend` max 499 (zero-inflated: 578 non-zero) | **Not removed / not winsorized.** Right tails are genuine high-value customers — exactly the heterogeneity CATE must capture. `history_log1p` added for linear/propensity models that are sensitive to skew. |
-| Class imbalance | conversion positive rate **0.90 %** (578/64,000); visit 14.7 % | **No SMOTE / no resampling.** Uplift metrics (Qini, AUUC) and honest ATE depend on the true base rate. Handle at model stage via stratified splits + class weights. |
-| Source typo | `zip_code` value `Surburban` | Relabelled to `Suburban` — pure string fix, category membership unchanged. |
-| Treatment balance | arms 21,306 / 21,307 / 21,387 (33.3 % each) | Consistent with randomization. |
-| Randomization sanity | max \|SMD\| (e-mail vs control) = **0.009**; 5-fold propensity AUC = **0.497**; propensity support 0.649–0.708 (≈ P(e-mail)=2/3) | Clean RCT. No confounding adjustment required; propensity retained only as a diagnostic and as a DR-learner nuisance. |
-
-### Naive (unadjusted) treatment effects — a sanity anchor for later models
-
-| Contrast | Δ visit | Δ conversion | Δ spend (\$) |
-|---|---:|---:|---:|
-| Mens e-mail − control | +0.076 | **+0.0068** | +0.77 |
-| Womens e-mail − control | +0.045 | **+0.0031** | +0.42 |
-
-(Stable across train and test — see `reports/hillstrom_balance_overlap.md`.)
-
----
-
-## 2. Feature classification table
-
-Full machine-readable version: `reports/hillstrom_feature_classification.csv`.
-
-| Feature | Category | Action | Reason |
+### Corrected in Phase 2
+| Issue | Phase-1 state | Fix | Justification |
 |---|---|---|---|
-| `customer_uid` | Identifier (surrogate) | **Exclude from X** (keep for joins) | Row-position id we attach because Hillstrom has none. Zero information; as a feature it would memorise rows. |
-| `recency` | Pre-treatment covariate (numeric) | **Keep as-is** | Months since last purchase, 1–12, pre-send. Bounded, low skew — no transform. Prime effect-modifier. |
-| `history` | Pre-treatment covariate (numeric) | **Keep** + derive `history_log1p` | Historical 12-month \$ spend, strictly positive, right-skewed. Raw for tree/uplift learners; log for linear/propensity. **Not winsorized.** |
-| `history_segment` | Derived-redundant of `history` | **Exclude from X** (keep as `history_segment_ord` for EDA) | Deterministic non-overlapping bucketing of `history`. Collinear + information-losing. |
-| `mens` | Pre-treatment covariate (binary) | **Keep** | Bought men's merchandise in prior 12 months. Pre-send behaviour (not gender). |
-| `womens` | Pre-treatment covariate (binary) | **Keep** | Bought women's merchandise in prior 12 months. Not mutually exclusive with `mens` (6,448 have both). |
-| `newbie` | Pre-treatment covariate (binary) | **Keep** | New customer in prior 12 months. Pre-send. |
-| `zip_code` | Pre-treatment covariate (categorical) | **Fix typo → one-hot** (fit on train) | Urban / Suburban / Rural. K dummies, `handle_unknown='ignore'`. |
-| `channel` | Pre-treatment covariate (categorical) | **One-hot** (fit on train) | Prior-year purchase channel: Phone / Web / Multichannel. K dummies. |
-| `history_log1p` | Derived covariate (numeric) | **Keep** (engineered) | log1p(history). Skew reduction for linear models; monotone → no ranking distortion for trees. |
-| `mw_count` | Derived covariate (0/1/2) | **Keep** (engineered, optional) | `mens + womens`. Cheap interpretable interaction proxy. |
-| `bought_both` | Derived covariate (binary) | **Keep** (engineered, optional) | `mens AND womens`. Flags broad-basket shoppers. |
-| `segment` | **Treatment** (raw) | **Map** → `treatment_arm` / `T` / `T_mens` / `T_womens` | The randomized 3-arm assignment. Native arms preserved; binary `T` provided. Never collapsed. |
-| `visit` | **Outcome** — post-treatment (mediator) | **Target only — exclude from X** | Site visit in the 2 weeks after send. Caused by the e-mail → post-treatment / mediator leakage if used as X. |
-| `conversion` | **Outcome** — post-treatment (primary) | **Target only — exclude from X** | Purchase in the 2 weeks after send. Primary uplift label. |
-| `spend` | **Outcome** — post-treatment (monetary) | **Target only — exclude from X** | Revenue in the 2 weeks after send; zero-inflated, `spend>0 ⟺ conversion=1`. ROI outcome. |
-| `history_segment_ord` | EDA helper (ordinal 1–7) | **Exclude from X** | Redundant with `history` for modelling; used for grouped balance/overlap tables. |
-| `split` | Metadata | **Keep outside X** | Bookkeeping. |
+| Redundant engineered feature | `mw_count` (= `mens + womens`) was in X | **Removed** `mw_count` | It is a pure linear combination of two features already in X and is constant-ish (every customer bought men's or women's, so it is 1 or 2) → zero new information, adds collinearity. `bought_both` (the `mens × womens` interaction, which a linear learner cannot form itself) is kept. |
+| Repo layout | `preprocessing/` + fitted artifacts mixed into `data/processed/` | **Restructured** to `src/causal_prep/` + `data/{raw,interim,processed}` + `artifacts/` + `reports/<ds>/` | Required for Phase-2 consistency across 3 datasets; separates regenerable data from source and from small fitted artifacts. |
+| Interim vs processed | cleaned full table sat in `data/processed/` | Moved to `data/interim/hillstrom/hillstrom_clean.parquet` | It is the pre-encoding cleaned frame, not a model matrix. |
 
-**Final X (14 columns):** `recency, history, history_log1p, mens, womens, newbie,
-mw_count, bought_both, zip_code_{Rural,Suburban,Urban},
-channel_{Multichannel,Phone,Web}`.
+Methodology was **not** otherwise changed. Hillstrom numbers are unchanged
+except X drops from 14 → 13 columns (`mw_count` removed).
 
 ---
 
-## 3. Pipeline & leakage controls
+## Part 2 — Per-dataset causal setup
 
-```
-Raw ─▶ Audit ─▶ Clean ─▶ Causal Feature Audit ─▶ Split (stratified) ─▶
-Fit ColumnTransformer + Scaler on TRAIN ─▶ Transform train & test ─▶ Save ─▶ Validate
-```
+### 2A. Hillstrom (primary)
+- **Unit**: customer, one row. Surrogate `customer_uid` (raw row index), metadata only.
+- **T**: `segment`, 3 randomized arms; binary `T` = any e-mail vs none.
+- **Y**: `visit` (mediator), `conversion` (primary), `spend` (monetary, zero-inflated).
+- **X (13)**: `recency`, `history`, `history_log1p`, `mens`, `womens`, `newbie`,
+  `bought_both`, `zip_code_{Rural,Suburban,Urban}`, `channel_{Multichannel,Phone,Web}`.
+- **Time**: none. Covariates pre-send; outcomes fixed forward 2-week window →
+  temporal leakage impossible, no temporal split.
+- **Imbalance**: conversion 0.9% → no resampling; stratified split.
+- **Cleaning**: `Surburban`→`Suburban` (relabel only); no winsorizing, no row drops,
+  no imputation needed (0 missing).
 
-* **Raw is read-only** — nothing is ever written back to `datasets/`.
-* **Fit-on-train-only:** one-hot categories, imputer statistics, and the optional
-  `StandardScaler` are `.fit()` on the training split, then applied to both
-  splits. Persisted as `preprocessor.joblib` / `scaler.joblib`.
-* **Split:** 80/20, stratified on `treatment_arm × conversion` so the 0.9 %
-  converter rate and the 3-arm balance are preserved in both folds. Seed
-  `20240501`. Model selection should use k-fold *within* train.
-* **Scaling is opt-in.** Tree-based CATE learners (Causal Forest, gradient-boosted
-  meta-learners) neither need nor benefit from it, and it destroys the
-  interpretability of the linear propensity diagnostic. The canonical matrix is
-  unscaled; a `*_scaled` variant is provided for linear S/T/X/DR learners.
-* **Positivity is a gate, not a footnote** (per `knowledge_base_1.md` guardrail 4)
-  — diagnostics in §4.
+### 2B. X5 RetailHero
+- **Unit**: loyalty-card client, one row. Native `client_id` → `client_uid`.
+- **T**: `treatment_flg` (a marketing communication), single binary arm, ≈ 50/50.
+- **Y**: `target` (purchase in the promo period), binary. **No monetary outcome.**
+- **X (10)**: `age` (clipped+imputed), `age_invalid`, `gender_{F,M,unknown}`,
+  `tenure_days`, `issue_month`, `has_redeemed_pre`, `days_since_first_redeem`
+  (censored+imputed), `redeem_info_missing`.
+- **Temporal-leakage control (the key move)**: `first_redeem_date` runs to
+  2019-11-20 while the campaign/enrolment boundary is 2019-03-15 (max
+  `first_issue_date`). **11.6%** of redemptions post-date the campaign. All
+  redeem-derived features are **censored at `REF_DATE` = 2019-03-16**: a
+  redemption on/after that date is treated exactly like "never redeemed".
+  `first_redeem_date` and `first_issue_date` raw datetimes are excluded.
+- **Invalid values**: `age` has ~885 out-of-range values in the RCT frame
+  (negatives, `1852`, …) → NaN + `age_invalid` flag + train-median impute. Rows
+  kept.
+- **Provided `uplift_test.csv` has no labels** → transformed to
+  `data/processed/x5/score.parquet` for later submission scoring; **not** an
+  evaluation split. Train/test (80/20) is carved from `uplift_train` only,
+  stratified on `treatment_flg × target`.
+- **`products.csv` unused**: not joinable to clients without the (absent)
+  `purchases` transaction table. See limitations.
+- **Imbalance**: `target` ≈ 62% → no resampling.
 
----
-
-## 4. Validation results (`reports/hillstrom_validation.json`)
-
-### Integrity — all hard checks pass
-
-| Check | Result |
-|---|---|
-| Row count conserved (train + test = 64,000) | ✅ |
-| No `customer_uid` overlap between train and test | ✅ |
-| Missing cells in X | **0** |
-| Non-finite cells in X | **0** |
-| Outcome / redundant column present in X | **none** |
-| One-hot `zip_code_*` / `channel_*` row-sums = 1 | ✅ / ✅ |
-| Train fraction | 0.80 |
-
-### Treatment / control & outcome rates (train)
-
-| Arm | n | visit | conversion | mean spend |
-|---|---:|---:|---:|---:|
-| control | 17,045 | 0.107 | 0.0057 | 0.69 |
-| mens_email | 17,046 | 0.183 | 0.0126 | 1.47 |
-| womens_email | 17,109 | 0.153 | 0.0088 | 1.12 |
-
-Test split reproduces the same ordering and magnitudes (`hillstrom_balance_overlap.md`).
-
-### Covariate overlap / positivity
-
-* Max \|SMD\| (e-mail vs control, train) = **0.011** — 0 features above the 0.10 flag.
-* 5-fold propensity AUC: **0.497** (logistic), **0.500** (gradient boosting).
-* Propensity support entirely within ≈ [0.65, 0.73]; **0 %** mass outside the
-  [0.01, 0.99] trim band.
-* **Verdict:** strong overlap across the whole covariate space. CATE is
-  identified everywhere; no low-overlap region needs flagging in the product.
-* Figures: `reports/figures/hillstrom_propensity_overlap.png`,
-  `reports/figures/hillstrom_love_plot.png`.
-
-### Reproducibility
-
-Deterministic given the seed. Test-set `customer_uid` fingerprint recorded
-(`test_uid_set_sha256_16 = 5acb3bbca25c3571`); `run_all` regenerates every
-artifact from the raw file.
-
-### Causal-assumption ledger (per `knowledge_base_1.md` §8.1)
-
-| Assumption | Status for Hillstrom |
-|---|---|
-| **SUTVA / no interference** | Plausible — customers are independent households; one e-mail per customer, no shared-treatment spillover mechanism. |
-| **Positivity / overlap** | **Holds strongly** — see above. |
-| **Unconfoundedness / ignorability** | **Holds by design** — treatment is randomized (balance + propensity AUC ≈ 0.5 confirm it). This is the dataset's key strength. |
-| **Consistency / well-defined treatment** | Holds — "the campaign e-mail" is a single concrete intervention per arm. |
-| **No post-treatment conditioning** | Enforced — `visit`/`conversion`/`spend` excluded from X; no filtering on any post-send variable. |
+### 2C. Lenta
+- **Unit**: grocery client, one row. **No ID column in the source** → surrogate
+  `client_uid` (row index).
+- **T**: `group` — `test` (treated, a communication) vs `control`. **Unequal
+  allocation 75.1% / 24.9%** (the dataset's holdout design, not a defect).
+- **Y**: `response_att` (attributed binary response). `response_sms` /
+  `response_viber` are fractional per-channel campaign-delivery values recorded
+  *during* the campaign and ill-defined for control → **excluded from X and from
+  the outcome set** (post-treatment).
+- **X (344)**: `age` (clipped+imputed), `age_invalid`, `gender_{F,M,unknown}`,
+  `children`, `months_from_register`, `main_format`, ~183 pre-campaign
+  purchase-behaviour aggregates (cheque counts, sale sums/counts, discount
+  shares, coefficient-of-variation `k_var_*`, `stdev_*`, `crazy_purchases_*`,
+  `*_share_*`) over 15d–12m windows, **plus ~150 train-fitted missing-indicators**.
+- **Missingness (large & structural)**: 113 numeric covariates have >5% missing
+  (max 72%). A `k_var_*` / `stdev_*` feature is *undefined* when the client had
+  too few baskets in the window, so NaN carries an "insufficient activity"
+  signal. Handled by **median impute + `SimpleImputer(add_indicator=True)`** (all
+  fit on train). Rows are **not** dropped.
+- **Time**: no timestamps → no temporal split; the window aggregates are
+  pre-campaign by construction.
+- **Imbalance**: `response_att` ≈ 10.8% → no resampling.
+- **Scale**: the full 687k-row dataset is processed. A 10k stratified benchmark
+  subsample (docs §4) is a one-liner on the processed train split if wanted.
 
 ---
 
-## 5. Deliverables index
+## Part 3 — Validation (every dataset)
+
+Machine-readable: `reports/<ds>/validation.json`. Human-readable:
+`reports/<ds>/data_quality.md` and `reports/<ds>/balance_overlap.md`.
+
+### Hard gates — all pass for all three
+- row count conserved (train + test == cleaned frame)
+- no unit-id overlap between train and test; unit-id unique
+- **0** missing cells and **0** non-finite cells in the X block after transform
+- **no** outcome / excluded / post-treatment column present in X
+- every X column numeric; one-hot blocks row-sum to 1
+- reproducibility: test-set unit-id fingerprint recorded and **stable across
+  re-runs** — `hillstrom 58c31bcd96b5ace8`, `x5 9573264c1085e3b6`,
+  `lenta 71cfa82a34e59195` (see `reports/<ds>/validation.json`)
+
+### Balance / positivity
+| Dataset | max\|SMD\| (train) | Propensity AUC (logreg / hgb) | Mass outside [0.01,0.99] | Verdict |
+|---|---:|---:|---:|---|
+| Hillstrom | 0.011 | 0.497 / 0.500 | 0.000 | Strong overlap; CATE identified everywhere |
+| X5 | 0.011 | 0.499 / 0.500 | 0.000 | Strong overlap; CATE identified everywhere |
+| Lenta | 0.028 | 0.497 / 0.500 | 0.000 | Strong overlap (propensity centred at 0.75); CATE identified |
+
+All `|SMD|` well under the 0.10 flag; propensity AUCs in the RCT band
+[0.45, 0.55]. Figures per dataset: `reports/<ds>/figures/propensity_overlap.png`,
+`reports/<ds>/figures/love_plot.png`.
+
+### Causal-assumption ledger
+| Assumption | Hillstrom | X5 | Lenta |
+|---|---|---|---|
+| **SUTVA / no interference** | Plausible (independent households, 1 e-mail each) | Plausible (per-client SMS) | Plausible (per-client communication) |
+| **Positivity / overlap** | Holds strongly | Holds strongly | Holds strongly (unequal but full-support allocation) |
+| **Unconfoundedness** | By design (randomized; AUC≈0.5) | By design (randomized; AUC≈0.5) | By design (randomized; AUC≈0.5) |
+| **Consistency** | "the campaign e-mail" is one concrete intervention | "the communication" is one intervention | "the communication" is one intervention |
+| **No post-treatment conditioning** | Enforced (visit/conversion/spend out of X) | Enforced (`first_redeem_date` censored; `target` out of X) | Enforced (`response_*` out of X) |
+
+---
+
+## Part 4 — Deliverables index
 
 | # | Deliverable | Location |
 |---|---|---|
-| 1 | Final processed dataset | `data/processed/hillstrom/` — `hillstrom_clean.csv` (all rows, readable), `train/test.parquet+.csv` (model matrix), `train/test_scaled.parquet` (optional), `feature_spec.json` |
-| 2 | Reproducible preprocessing code | `preprocessing/` (`config.py`, `hillstrom_audit.py`, `hillstrom_preprocess.py`, `hillstrom_validate.py`, `run_all.py`, `README.md`), `requirements.txt` |
-| 3 | Feature classification table | `reports/hillstrom_feature_classification.csv` (+ §2 here) |
-| 4 | Preprocessing / data-quality report | `reports/hillstrom_data_quality_report.md`, `reports/hillstrom_audit.json` |
-| 5 | Treatment/control & overlap diagnostics | `reports/hillstrom_balance_overlap.md`, `reports/hillstrom_validation.json`, `reports/figures/*.png` |
-| 6 | Remaining uncertainties / causal limitations | §6 below |
-| — | Fitted preprocessors | `data/processed/hillstrom/preprocessor.joblib`, `scaler.joblib` |
+| 1 | Processed datasets (modeling-ready) | `data/processed/<ds>/train.parquet`, `test.parquet` (+ `*_scaled.parquet`; `x5/score.parquet`; CSV mirror for datasets ≤ 100k rows) |
+| — | Cleaned pre-encoding frames | `data/interim/<ds>/<ds>_clean.parquet` |
+| 2 | Reproducible preprocessing code | `src/causal_prep/` — `config.py`, `common.py`, `reporting.py`, `run.py`, `datasets/{hillstrom,x5,lenta}.py`; `pyproject.toml`; `scripts/fetch_lenta.sh` |
+| 3 | Feature classification tables | `reports/<ds>/feature_classification.csv` |
+| 4 | Preprocessing / data-quality reports | `reports/<ds>/data_quality.md`, `reports/<ds>/audit.json` |
+| 5 | Treatment/control & overlap diagnostics | `reports/<ds>/balance_overlap.md`, `reports/<ds>/validation.json`, `reports/<ds>/figures/*.png` |
+| 6 | Fitted preprocessors + spec | `artifacts/<ds>/preprocessor.joblib`, `scaler.joblib`, `feature_spec.json` |
+| 7 | Remaining uncertainties / limitations | Part 5 below |
+
+Regenerate everything: `python -m causal_prep.run all` (Hillstrom ~30 s, X5 ~20 s,
+Lenta ~2 min).
 
 ---
 
-## 6. Remaining uncertainties & causal limitations
+## Part 5 — Remaining uncertainties & causal limitations
 
-1. **No individual ground-truth ITE.** Hillstrom is a real RCT: `Y(1)` and `Y(0)`
-   are never both observed for the same customer. Only population/subgroup
-   effects and policy value are estimable. Report AUUC/Qini/policy value, **not**
-   per-customer ITE error, on this dataset. Use the synthetic / IHDP / ACIC
-   benchmarks (per `docs/dataset_guide.md`) for ITE-accuracy claims.
-2. **No customer ID → "duplicate" rows are unresolved.** 7,634 rows share an
-   identical feature vector with another row. We keep them as coincidental
-   collisions (they carry 0 conversions and spread evenly across arms, so the
-   impact on any estimate is negligible), but we cannot *prove* they are distinct
-   customers. If a later data drop with IDs appears, re-audit.
-3. **`visit` is a mediator, not a clean secondary outcome.** It sits on the
-   causal path e-mail → visit → purchase. It is fine as a stand-alone uplift
-   target, but must not be used as a covariate, and mediation analyses that
-   condition on it need front-door / sequential-ignorability assumptions that are
-   out of scope here.
-4. **`spend` is zero-inflated** (99.1 % exact zeros). Treating it as a plain
-   continuous outcome is valid for ATE, but CATE models on `spend` should expect
-   heavy-tailed residuals; a two-part (hurdle) formulation or a
-   conversion-conditional spend model may be needed later. Not decided at the
-   preprocessing stage.
-5. **Effect sizes are small relative to outcome variance** (conversion uplift
-   ≈ 0.3–0.7 pp on a 0.9 % base). S-learner regularisation can shrink such
-   effects toward zero — flagged for the modeling phase, not fixable here.
-6. **External validity.** One retailer, one campaign, 2008, US. Generalization
-   claims require the phase-2 datasets (Lenta / MegaFon / X5) — see §7.
-7. **`recency` granularity.** Integer months only; finer recency (days) is not
-   available, which caps the resolution of recency-driven heterogeneity.
-8. **One-hot with all K levels** introduces exact collinearity in the intercept
-   for unregularised linear models. The `*_scaled` matrix is intended for
-   penalised/tree learners; drop a reference level per block if fitting plain OLS
-   logistic regression.
+### Cross-cutting
+1. **No individual ground-truth ITE** in any of the three (all real RCTs):
+   `Y(1)` and `Y(0)` are never both observed for a unit. Report population /
+   subgroup effects, uplift ranking (Qini/AUUC), and policy value — **not**
+   per-unit ITE error. Route ITE-accuracy claims to the synthetic / IHDP / ACIC
+   benchmarks (`docs/dataset_guide.md` §7–9), which are not yet in the repo.
+2. **One-hot keeps all K levels** → exact collinearity for an unpenalised linear
+   model. The `*_scaled` matrices target penalised / tree learners; drop one
+   reference dummy per block for plain logistic/OLS.
+3. **Small effects.** Hillstrom conversion uplift ≈ 0.3–0.7 pp on a 0.9% base;
+   Lenta ≈ 0.75 pp on 10.8%. S-learner regularisation can shrink these toward
+   zero — a modeling-phase concern.
 
----
+### Hillstrom
+4. `visit` is a **mediator** (e-mail → visit → purchase): fine as a stand-alone
+   uplift target, never a covariate; mediation analysis needs extra assumptions.
+5. `spend` is **99.1% exact zeros** → treat as continuous for ATE, but CATE on
+   spend likely needs a two-part / hurdle model.
+6. The 7,634 coincidental duplicates cannot be *proved* distinct (no ID); impact
+   on estimates is negligible (0 conversions, arm-balanced) but noted.
 
-## 7. Secondary datasets — audit & verdicts (not preprocessed here)
+### X5
+7. **Feature-poor.** The `purchases` transaction table — X5's entire "rich retail"
+   value proposition (`docs/dataset_guide.md` §6.2) — is **not in the repo**. X
+   is limited to demographics + two loyalty-card dates (10 columns). Adding
+   `purchases` later would roughly 10–50× the covariate space and warrants
+   re-running this pipeline.
+8. **`REF_DATE = 2019-03-16` is inferred** from `max(first_issue_date)`, not
+   documented. If the true campaign send date differs, the redeem-censoring
+   boundary should move with it. The direction of caution is correct (censoring
+   can only *remove* leakage), but tenure/recency magnitudes depend on it.
+9. `days_since_first_redeem` is median-imputed for the 79%→ / never-redeemed
+   rows; the `has_redeemed_pre` + `redeem_info_missing` flags carry the signal,
+   but a model that ignores the flags will see a spurious mode at the median.
+10. Provided `uplift_test.csv` cannot be used for evaluation (no labels).
 
-### 7.1 `Digital Marketing Campaign Dataset.xlsx` — ⚠️ not causally usable as-is
+### Lenta
+11. **Anonymised behavioural features** (`k_var_count_per_cheque_3m_g34`, …):
+    causally valid as pre-treatment history, but low interpretability for SHAP /
+    business narrative. Group-level (`g24`, `g34`, …) meanings are unknown.
+12. **~150 missing-indicators** roughly double the matrix width (344 columns).
+    They are information-preserving and can be dropped by the modeler; several
+    will be near-constant.
+13. **No monetary outcome** (only binary `response_att`) → no incremental-revenue
+    / ROI optimisation from Lenta; use Hillstrom `spend` for that.
+14. **No `CardHolder` / ID column** in this file (the reference notebook assumes
+    one). Deduplication is limited to full-row identity (0 found).
+15. **Unequal 75/25 allocation** inflates control-arm variance; effective sample
+    for the control counterfactual is ~171k, not ~344k.
+16. `response_sms` / `response_viber` were discarded entirely. If a future
+    analysis wants channel-specific treatment effects, they would need careful
+    re-derivation (they are fractions, not clean binaries, and populated oddly
+    for control).
 
-* 5,000 × 15. `user_id` 4,988 unique. Clean, no missing — looks **synthetic/toy**.
-* **Not referenced in `docs/`** anywhere; not part of the documented suite.
-* `treatment_exposed` is *exposure*, not random assignment — endogenous
-  (exposed users differ systematically from non-exposed). Treating it as `T`
-  invites selection bias.
-* Severe **post-treatment columns**: `impressions`, `clicks`, `spend_usd`,
-  `revenue_usd`, `roi` are all realised *after* exposure; `roi` is a
-  deterministic post-hoc function of `revenue_usd`/`spend_usd`.
-* Valid pre-treatment covariates would be only `channel`, `device`, `country`,
-  `segment`, `prior_visits_30d`, `prior_spend_180d`.
-* **Verdict:** use at most as a schema/pipeline **test fixture**. Do not report
-  causal estimates from it without an explicit randomization/ignorability story.
-
-### 7.2 X5 RetailHero (`phase 2 - generalization/x5-retail-hero-uplift-raw-data/`) — ✅ usable, feature-limited
-
-* `uplift_train.csv`: 200,039 rows, `treatment_flg` ≈ 50/50 (99,981 / 100,058),
-  `target` binary. Naive ATE ≈ **+3.3 pp** (63.7 % treated vs 60.3 % control).
-* `clients.csv`: 400,162 rows. `age` has **invalid values** (min −7,491, max
-  1,901) → needs range-clipping / to-missing (~a few hundred rows outside
-  [10, 100]). `gender` ∈ {F, M, U} — `U` (46 %) is "unknown", keep as its own
-  level. `first_redeem_date` missing for **35,469** clients (8.9 %) — informative
-  ("never redeemed"), model as a flag; **do not drop**.
-* **`purchases` table is absent** — the raw transaction history that X5's value
-  proposition rests on (`docs/dataset_guide.md` §6.2) is not in the repo. Feature
-  engineering is limited to demographics + card issue/redeem dates.
-* **Temporal caution:** `first_redeem_date` can post-date the campaign; only the
-  pre-campaign portion is a valid covariate. Needs the campaign date (not in the
-  provided files) to adjudicate — treat as a flag + pre-campaign-only derived
-  features until confirmed.
-* **Verdict:** valid RCT for cross-domain generalization (a separate pipeline,
-  mirroring this one, is warranted). Lower feature richness than documented until
-  the purchases table is added.
-
-### 7.3 MegaFon / Lenta
-
-Only referenced via the phase-2 notebooks; **no local data files**. Out of scope
-until the datasets are added. The notebooks confirm the intended modeling stack
-(`scikit-uplift` S-/T-learners, Qini/AUUC) but contain no preprocessing logic to
-port.
-
----
-
-## 8. One-line summary
-
-Hillstrom is a clean, well-powered 3-arm marketing RCT: randomization holds,
-overlap is total, there is no missingness and no temporal axis to leak through.
-The only real preprocessing risks are **post-treatment leakage** (handled:
-`visit`/`conversion`/`spend` are targets only) and **redundant encoding**
-(handled: `history_segment` dropped in favour of continuous `history`). The
-dataset is ready for uplift / CATE estimation; individual-ITE accuracy claims
-must be routed to the synthetic benchmarks instead.
+### Not addressed (out of Phase-2 scope)
+- MegaFon: no local data (only a reference notebook). Synthetic CATE / IHDP /
+  ACIC / Criteo: not in the repo. `Digital Marketing Campaign Dataset.xlsx`:
+  synthetic, exposure ≠ randomization, post-treatment columns — **not** a valid
+  causal dataset; left as a schema fixture only.

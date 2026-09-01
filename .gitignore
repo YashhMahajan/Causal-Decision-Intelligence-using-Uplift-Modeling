@@ -1,4 +1,18 @@
+# virtualenv / packaging
 .venv/
 __pycache__/
 *.pyc
+*.egg-info/
+build/
+dist/
+
+# OS
 .DS_Store
+
+# generated data — regenerate with `python -m causal_prep.run all`
+data/interim/
+data/processed/
+data/raw/lenta/*.csv.gz
+
+# keep: data/raw/**/README.md, symlinks, artifacts/, reports/
+!data/raw/**/README.md

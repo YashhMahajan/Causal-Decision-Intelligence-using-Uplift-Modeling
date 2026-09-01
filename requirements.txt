@@ -1,5 +1,7 @@
-# Causal-safe preprocessing pipeline - pinned to what was used to produce
-# data/processed/hillstrom/ and reports/.  Python 3.11.
+# Pinned deps for the causal_prep preprocessing pipeline (mirrors pyproject.toml).
+# Python 3.11.  Install with either:
+#   pip install -e .          (preferred — makes `python -m causal_prep.run` work)
+#   pip install -r requirements.txt
 pandas==3.0.5
 numpy==2.4.6
 scikit-learn==1.9.0

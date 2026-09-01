@@ -1,0 +1,108 @@
+{
+  "dataset": "x5",
+  "n_rows": 200039,
+  "n_cols": 14,
+  "dtypes": {
+    "client_uid": "str",
+    "treatment_flg": "int8",
+    "target": "int8",
+    "first_issue_date": "datetime64[us]",
+    "first_redeem_date": "datetime64[us]",
+    "age": "float64",
+    "gender": "category",
+    "treatment_arm": "category",
+    "age_invalid": "int8",
+    "tenure_days": "float64",
+    "issue_month": "float64",
+    "has_redeemed_pre": "int8",
+    "days_since_first_redeem": "float64",
+    "redeem_info_missing": "int8"
+  },
+  "missing": {
+    "first_redeem_date": 17546,
+    "age": 885,
+    "days_since_first_redeem": 41059
+  },
+  "missing_total": 59490,
+  "duplicates": {
+    "unit_id_duplicated": 0,
+    "full_row_duplicated_extra": 0
+  },
+  "invalid_value_checks": {
+    "age": 885,
+    "tenure_days": 0,
+    "issue_month": 0
+  },
+  "treatment": {
+    "primary_binary": "treatment_flg",
+    "arm_col": "treatment_arm",
+    "arm_counts": {
+      "control": 100058,
+      "treated": 99981
+    },
+    "arm_shares": {
+      "control": 0.5002,
+      "treated": 0.4998
+    },
+    "p_treated": 0.4998075375301816
+  },
+  "outcomes_by_arm": {
+    "control": {
+      "target": 0.6032800975434248
+    },
+    "treated": {
+      "target": 0.6365109370780448
+    }
+  },
+  "naive_unadjusted_ATE": {
+    "treated_vs_control": {
+      "target": 0.03323083953462003
+    }
+  },
+  "class_balance": {
+    "target": 0.6198891216212838
+  },
+  "randomization_check": {
+    "standardized_mean_diffs": {
+      "age": 0.0054,
+      "tenure_days": 0.0085,
+      "issue_month": 0.0079,
+      "days_since_first_redeem": -0.0014,
+      "age_invalid": 0.0029,
+      "has_redeemed_pre": 0.0071,
+      "redeem_info_missing": -0.0071,
+      "gender_F": 0.0032,
+      "gender_M": -0.0013,
+      "gender_unknown": -0.0021
+    },
+    "max_abs_smd": 0.0085,
+    "n_smd_above_flag": 0,
+    "propensity_auc_5fold": 0.49983944804756864,
+    "propensity_min": 0.4844514425689685,
+    "propensity_max": 0.5137196980229358,
+    "propensity_mass_outside_trim": 0.0,
+    "propensity_diag_n": 200039
+  },
+  "dataset_specific": {
+    "leakage_control_first_redeem_date": {
+      "REF_DATE": "2019-03-16",
+      "redemptions_after_REF_(post_treatment)": 23268,
+      "share_post_treatment": 0.11631731812296602,
+      "redeem_before_issue_(invalid)": 245,
+      "redeem_missing_raw": 17546,
+      "resolution": "censored at REF_DATE -> has_redeemed_pre / days_since_first_redeem"
+    },
+    "age_cleaning": {
+      "raw_min": -7491.0,
+      "raw_max": 1852.0,
+      "set_invalid_to_nan": 885
+    },
+    "gender_levels": {
+      "unknown": 92832,
+      "F": 73696,
+      "M": 33511
+    },
+    "products_table": "present but UNUSED (no purchases table to join through)",
+    "provided_test_has_labels": false
+  }
+}

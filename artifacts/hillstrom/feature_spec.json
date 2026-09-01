@@ -1,0 +1,73 @@
+{
+  "dataset": "hillstrom",
+  "unit_of_analysis": "individual customer (one row; surrogate customer_uid = raw row index)",
+  "random_seed": 20240501,
+  "test_size": 0.2,
+  "n_rows_total": 64000,
+  "n_train": 51200,
+  "n_test": 12800,
+  "n_score_unlabelled": 0,
+  "X_features": [
+    "recency",
+    "history",
+    "history_log1p",
+    "mens",
+    "womens",
+    "newbie",
+    "bought_both",
+    "zip_code_Rural",
+    "zip_code_Suburban",
+    "zip_code_Urban",
+    "channel_Multichannel",
+    "channel_Phone",
+    "channel_Web"
+  ],
+  "X_scaled_variant_cols": [
+    "recency",
+    "history",
+    "history_log1p"
+  ],
+  "treatment_cols": [
+    "treatment_arm",
+    "T",
+    "T_mens",
+    "T_womens"
+  ],
+  "treatment_primary_binary": "T",
+  "treatment_arms": [
+    "control",
+    "mens_email",
+    "womens_email"
+  ],
+  "outcome_cols": [
+    "visit",
+    "conversion",
+    "spend"
+  ],
+  "primary_outcome": "conversion",
+  "excluded_from_X": {
+    "visit": "post-treatment outcome (2-week window) and a mediator on e-mail->visit->purchase",
+    "conversion": "post-treatment outcome \u2014 the primary label",
+    "spend": "post-treatment outcome \u2014 zero-inflated; spend>0 iff conversion=1",
+    "history_segment": "deterministic non-overlapping bucketing of `history` \u2014 collinear, information-losing",
+    "history_segment_ord": "ordinal recoding of the above; kept for grouped diagnostics only",
+    "segment": "raw treatment label \u2014 mapped to treatment_arm / T",
+    "customer_uid": "surrogate identifier \u2014 zero information, would memorise rows"
+  },
+  "learned_on_train_only": [
+    "ColumnTransformer (one-hot categories, imputer statistics)",
+    "StandardScaler (separate artifact, optional/opt-in)"
+  ],
+  "stratified_split_on": [
+    "treatment_arm",
+    "conversion"
+  ],
+  "notes": [
+    "Genuine 3-arm RCT; randomization verified (max|SMD|~0.01, propensity AUC~0.5).",
+    "No timestamp column: covariates are a pre-send 12-month snapshot, outcomes a fixed forward 2-week window -> temporal leakage structurally impossible; no temporal split applicable.",
+    "7,634 rows share an identical feature vector with another row; no customer id exists to prove identity. They spread evenly across arms and carry 0 conversions -> kept as coincidental collisions (no row dropping).",
+    "conversion rate ~0.9% -> NO resampling/SMOTE; stratified split on treatment_arm x conversion preserves the rare cell in both folds.",
+    "history / spend right tails are genuine high-value customers -> NOT winsorized.",
+    "`visit` is available as a stand-alone uplift target but is a mediator; never a feature."
+  ]
+}
