@@ -1,0 +1,12 @@
+.venv/
+__pycache__/
+*.pyc
+.DS_Store
+.pytest_cache/
+mlruns/
+data/processed/*
+!data/processed/.gitkeep
+data/validation/*
+!data/validation/.gitkeep
+data/raw/lenta/
+data/raw/megafon/
