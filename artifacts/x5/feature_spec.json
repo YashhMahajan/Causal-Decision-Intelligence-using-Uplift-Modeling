@@ -1,0 +1,64 @@
+{
+  "dataset": "x5",
+  "unit_of_analysis": "loyalty-card client (one row per client; native client_id)",
+  "random_seed": 20240501,
+  "test_size": 0.2,
+  "n_rows_total": 200039,
+  "n_train": 160031,
+  "n_test": 40008,
+  "n_score_unlabelled": 200123,
+  "X_features": [
+    "age",
+    "tenure_days",
+    "issue_month",
+    "days_since_first_redeem",
+    "age_invalid",
+    "has_redeemed_pre",
+    "redeem_info_missing",
+    "gender_F",
+    "gender_M",
+    "gender_unknown"
+  ],
+  "X_scaled_variant_cols": [
+    "age",
+    "tenure_days",
+    "days_since_first_redeem"
+  ],
+  "treatment_cols": [
+    "treatment_arm",
+    "treatment_flg"
+  ],
+  "treatment_primary_binary": "treatment_flg",
+  "treatment_arms": [
+    "control",
+    "treated"
+  ],
+  "outcome_cols": [
+    "target"
+  ],
+  "primary_outcome": "target",
+  "excluded_from_X": {
+    "target": "post-treatment outcome \u2014 the label",
+    "first_issue_date": "raw timestamp \u2014 replaced by pre-treatment `tenure_days` / `issue_month`",
+    "first_redeem_date": "raw timestamp \u2014 POST-treatment for ~11.6% of clients; replaced by REF_DATE-censored `has_redeemed_pre` / `days_since_first_redeem`",
+    "client_uid": "native identifier \u2014 not a feature",
+    "treatment_flg": "treatment \u2014 kept as T, not a covariate"
+  },
+  "learned_on_train_only": [
+    "ColumnTransformer (one-hot categories, imputer statistics)",
+    "StandardScaler (separate artifact, optional/opt-in)"
+  ],
+  "stratified_split_on": [
+    "treatment_flg",
+    "target"
+  ],
+  "notes": [
+    "RCT: treatment_flg ~50/50 (99,981 / 100,058); randomization verified (max|SMD|<0.01 on available covariates, propensity AUC~0.50).",
+    "Feature set is THIN: the raw `purchases` transaction table (X5's main value per docs \u00a76.2) is NOT in the repo, so covariates are limited to demographics + loyalty-card dates. products.csv is not joinable without purchases -> unused.",
+    "`first_redeem_date` censored at REF_DATE=2019-03-16 to prevent post-treatment leakage (raw values extend to 2019-11; 11.6% post-date the campaign).",
+    "age has implausible values (<14 or >99, incl. negatives / years like 1901): ~885 in the labelled RCT frame, 1,404 across all 400k clients. Set to NaN + `age_invalid` flag + median impute on train (rows NOT dropped).",
+    "target base rate ~62% (not rare) -> no resampling.",
+    "Provided uplift_test.csv has NO labels: it is transformed to `score.parquet` for later submission scoring, and is NOT used as an evaluation split. The train/test split is carved from uplift_train only.",
+    "No continuous / monetary outcome is available (only binary `target`)."
+  ]
+}

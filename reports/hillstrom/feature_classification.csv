@@ -1,0 +1,17 @@
+feature,category,action,reason
+customer_uid,identifier (surrogate),exclude from X (keep for joins),Row-index id we attach; Hillstrom has none. Zero information.
+recency,pre-treatment covariate (numeric),keep as-is,"Months since last purchase, 1-12, pre-send. Bounded, low skew."
+history,pre-treatment covariate (numeric),keep + derive history_log1p,"Historical 12-month $ spend, strictly positive, right-skewed. Not winsorized."
+history_segment,derived-redundant of history,exclude from X (ordinal kept for EDA),Deterministic non-overlapping bucketing of `history`. Collinear.
+mens,pre-treatment covariate (binary),keep,Bought men's merchandise in prior 12 months (not gender).
+womens,pre-treatment covariate (binary),keep,Bought women's merchandise in prior 12 months. Not exclusive with `mens`.
+newbie,pre-treatment covariate (binary),keep,New customer in prior 12 months.
+zip_code,pre-treatment covariate (categorical),fix typo + one-hot (fit on train),Urban / Suburban / Rural. 'Surburban' corrected.
+channel,pre-treatment covariate (categorical),one-hot (fit on train),Prior-year purchase channel: Phone / Web / Multichannel.
+history_log1p,derived covariate (numeric),keep (engineered),log1p(history) — skew control for linear/propensity models; monotone.
+bought_both,derived covariate (binary),"keep (engineered, optional)",mens AND womens — the interaction a linear learner cannot form itself.
+segment,TREATMENT (raw),map -> treatment_arm / T / T_mens / T_womens,Randomized 3-arm assignment. Native arms preserved; never collapsed.
+visit,OUTCOME — post-treatment (mediator),target only — EXCLUDE from X,Site visit in the 2 weeks after send. Caused by the e-mail.
+conversion,OUTCOME — post-treatment (primary),target only — EXCLUDE from X,Purchase in the 2 weeks after send. Primary uplift label.
+spend,OUTCOME — post-treatment (monetary),target only — EXCLUDE from X,Revenue in the 2 weeks after send; zero-inflated.
+history_segment_ord,EDA helper (ordinal 1-7),exclude from X,Redundant with `history`; used for grouped balance tables.
